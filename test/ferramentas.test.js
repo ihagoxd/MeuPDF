@@ -379,9 +379,26 @@ describe('converter', () => {
     assert.doesNotMatch(doc, /Escritório Modelo/, 'o cabeçalho repetido sai do corpo');
     assert.match(strFromU8(zip['word/header1.xml']), /Escritório Modelo de Advocacia/);
     const rodape = strFromU8(zip['word/footer1.xml']);
-    assert.match(rodape, /w:instr=" PAGE "/, 'número da página vira campo');
-    assert.match(rodape, /w:instr=" NUMPAGES "/, 'total de páginas vira campo');
+    assert.match(rodape, /w:instr=" PAGE [^"]*"/, 'número da página vira campo');
+    assert.match(rodape, /w:instr=" NUMPAGES [^"]*"/, 'total de páginas vira campo');
     assert.match(doc, /<w:pageBreakBefore\/>/, 'cada página do PDF começa uma página no Word');
+  });
+
+  test('PDF para Word: tabela sem linhas (extrato) vira tabela, um valor por célula', async () => {
+    const [a] = await A.registrar([await A.pdfComTabela('word-tabela-solta.pdf')]);
+    const t = await A.rodar('pdf-word', [a], { modo: 'texto' });
+    ok(t);
+    const zip = unzipSync(fs.readFileSync(t.arquivos[0]));
+    const doc = strFromU8(zip['word/document.xml']);
+    const tabela = doc.match(/<w:tbl>[\s\S]*?<\/w:tbl>/);
+    assert.ok(tabela, 'tem tabela');
+    assert.equal((tabela[0].match(/<w:gridCol /g) || []).length, 4, 'quatro colunas');
+    assert.equal((tabela[0].match(/<w:tr>/g) || []).length, 5, 'cinco linhas');
+    const celulas = [...tabela[0].matchAll(/<w:tc>([\s\S]*?)<\/w:tc>/g)].map((m) => m[1].replace(/<[^>]+>/g, ''));
+    assert.deepEqual(celulas.slice(4, 8), ['Ana Souza', '0001234-56.2025', 'R$ 1.234,56', '01/02/2025']);
+    assert.doesNotMatch(tabela[0], /w:val="single"/, 'sem borda que o PDF não tem');
+    // texto que não veio do Word novo: modo sem o aperto de espaços do justificado
+    assert.match(strFromU8(zip['word/settings.xml']), /compatibilityMode" w:uri="[^"]+" w:val="14"/);
   });
 
   test('PDF digitalizado vira Word editável (OCR automático)', { timeout: 240000 }, async () => {

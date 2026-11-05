@@ -17,6 +17,7 @@ const sharp = require('sharp');
 
 const pdfjs = require('./pdfjs');
 const ocr = require('./ocr');
+const { acharTabelasSemBorda } = require('./tabelas-sem-borda');
 
 const DPI_FIGURAS = 220;
 
@@ -276,12 +277,28 @@ function linhaCobrindo(lista, pos, a, b) {
   return coberto >= (b - a) * 0.85 ? perto.reduce((m, s) => (s.a1 - s.a0 > m.a1 - m.a0 ? s : m)) : null;
 }
 
+/** Tira as barras de um código de barras (8 ou mais, coladas e da mesma altura). */
+function semCodigoDeBarras(verticais) {
+  const ord = verticais.slice().sort((a, b) => a.pos - b.pos);
+  const fora = new Set();
+  let grupo = [];
+  const fechar = () => { if (grupo.length >= 8) grupo.forEach((s) => fora.add(s)); grupo = []; };
+  for (const s of ord) {
+    const u = grupo[grupo.length - 1];
+    if (u && (s.pos - u.pos > 5 || Math.abs(s.a0 - u.a0) > 1.5 || Math.abs(s.a1 - u.a1) > 1.5)) fechar();
+    grupo.push(s);
+  }
+  fechar();
+  return fora.size ? verticais.filter((s) => !fora.has(s)) : verticais;
+}
+
 /**
  * Tabelas a partir das linhas desenhadas: grade de colunas e linhas,
  * células mescladas onde falta a borda, fundo das células e texto de cada uma.
  * @returns {{tabelas:any[], horizontais:any[], verticais:any[], retangulos:any[]}} o que sobrou
  */
-function acharTabelas(horizontais, verticais, retangulos, itens, alturaPagina) {
+function acharTabelas(horizontais, verticaisTodas, retangulos, itens, alturaPagina) {
+  const verticais = semCodigoDeBarras(verticaisTodas);
   const todos = [...horizontais.map((s) => ({ ...s, o: 'h', ref: s })), ...verticais.map((s) => ({ ...s, o: 'v', ref: s }))];
   const pai = todos.map((_, i) => i);
   const raiz = (i) => { while (pai[i] !== i) { pai[i] = pai[pai[i]]; i = pai[i]; } return i; };
@@ -699,6 +716,38 @@ async function camposPreenchidos(doc, n) {
   }
 }
 
+/**
+ * Marcador de lista desenhado (o Chrome e o Edge desenham a bolinha do <ul> como
+ * figura): vira o caractere "•" (ou "◦", "▪") no começo da linha.
+ * @returns {any[]} as caixas dos desenhos usados (saem das figuras)
+ */
+function marcadoresDesenhados(formas, escala, itens) {
+  const usados = [];
+  for (const f of formas) {
+    if (f.alfa < 0.3 || (f.tipo !== 'fill' && !f.curvo)) continue;
+    const pts = f.sub.flat();
+    if (!pts.length) continue;
+    const xs = pts.map((p) => p[0] / escala);
+    const ys = pts.map((p) => p[1] / escala);
+    const c = { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+    const w = c.x1 - c.x0;
+    const h = c.y1 - c.y0;
+    if (w < 1.2 || h < 1.2 || w > 7 || h > 7 || w / h > 1.5 || h / w > 1.5) continue;
+    const cy = (c.y0 + c.y1) / 2;
+    const vizinho = itens
+      .filter((it) => it.x0 > c.x1 && it.x0 - c.x1 <= Math.max(18, it.tamanho * 2.5) && w <= it.tamanho * 0.6
+        && cy > it.base - it.tamanho * 0.75 && cy < it.base + 0.5)
+      .sort((a, b) => a.x0 - b.x0)[0];
+    if (!vizinho) continue;
+    // texto colado à esquerda: é um desenho no meio da linha, não marcador
+    if (itens.some((it) => Math.abs(it.base - vizinho.base) < vizinho.tamanho * 0.3 && it.x1 <= c.x0 + 0.5 && c.x0 - it.x1 < vizinho.tamanho * 2)) continue;
+    const texto = !f.curvo ? '▪' : f.tipo === 'fill' ? '•' : '◦';
+    itens.push(novoItem({ texto, x0: c.x0, x1: c.x1, base: vizinho.base, tamanho: vizinho.tamanho, fonte: vizinho.fonte, cor: corHex(f.cor) || vizinho.cor }));
+    usados.push({ x0: c.x0 - 0.6, y0: c.y0 - 0.6, x1: c.x1 + 0.6, y1: c.y1 + 0.6 });
+  }
+  return usados;
+}
+
 function novoItem(base) {
   return {
     sublinhado: false, riscado: false, destaque: null, negrito: false, italico: false, cor: '000000', ocr: false,
@@ -736,6 +785,24 @@ async function lerPagina(doc, n, { alvo = 'word', ocr: usarOcr = true, idioma = 
     const c = corHex(l.cor) || '000000';
     m.set(c, (m.get(c) || 0) + 1);
   }
+  // Espaços soltos (o Chrome e o Edge escrevem o texto justificado palavra por
+  // palavra): o vão entre duas palavras é espaço, por mais largo que seja.
+  const espacos = new Map();
+  for (const it of brutos) {
+    if (it.inclinado || it.texto.trim() || !(it.l > 0)) continue;
+    const k = Math.round(it.base);
+    if (!espacos.has(k)) espacos.set(k, []);
+    espacos.get(k).push(it);
+  }
+  const espacoAntes = (it) => {
+    for (let k = Math.round(it.base) - 1; k <= Math.round(it.base) + 1; k += 1) {
+      for (const s of espacos.get(k) || []) {
+        // (o Chrome também põe "espaço" entre as células de uma tabela: esse é bem mais largo)
+        if (Math.abs(s.base - it.base) <= it.tamanho * 0.3 && s.x < it.x - 0.3 && s.x + s.l >= it.x - 1 && it.x - s.x <= it.tamanho * 1.6) return s.x;
+      }
+    }
+    return null;
+  };
   const visiveis = [];
   const invisiveis = [];
   brutos.forEach((it, idx) => {
@@ -751,6 +818,10 @@ async function lerPagina(doc, n, { alvo = 'word', ocr: usarOcr = true, idioma = 
       negrito: it.negrito,
       italico: it.italico,
     });
+    if (espacos.size) {
+      const e = espacoAntes(it);
+      if (e != null) item.espacoDesde = e;
+    }
     const doCampo = letrasDoCampo.get(idx);
     if (doCampo) {
       // valor de campo: a posição e o tamanho vêm das letras desenhadas
@@ -770,6 +841,7 @@ async function lerPagina(doc, n, { alvo = 'word', ocr: usarOcr = true, idioma = 
     } else invisiveis.push(item);
   });
 
+  const desenhados = marcadoresDesenhados(d.registro.formas, escala, visiveis);
   const paginaToda = largura * altura;
   const fotoGrande = d.registro.imagens.some((im) => ((im.x1 - im.x0) * (im.y1 - im.y0)) / (escala * escala) > paginaToda * 0.5);
   const letrasVisiveis = visiveis.reduce((s, it) => s + it.texto.replace(/\s/g, '').length, 0);
@@ -812,7 +884,7 @@ async function lerPagina(doc, n, { alvo = 'word', ocr: usarOcr = true, idioma = 
 
   // formas: sublinhado, realce e tabelas
   const formas = analisarFormas(d.registro.formas, escala);
-  const ignorar = [];
+  const ignorar = desenhados.slice();
   let tabelas = [];
   let livres = itens;
   if (alvo === 'word') {
@@ -822,10 +894,16 @@ async function lerPagina(doc, n, { alvo = 'word', ocr: usarOcr = true, idioma = 
     livres = t.livres;
     for (const s of t.usados.segmentos) ignorar.push(caixaDoSegmento(s, formas.horizontais.includes(s) ? 'h' : 'v'));
     for (const r of t.usados.retangulos) ignorar.push(r);
-    const restoH = marcarSublinhados(itens, t.horizontais);
-    for (const s of t.horizontais) if (!restoH.includes(s)) ignorar.push(caixaDoSegmento(s, 'h'));
-    const restoR = marcarRealces(livres, t.retangulos);
-    for (const r of t.retangulos) if (!restoR.includes(r)) ignorar.push(r);
+    // depois, as tabelas sem linhas (colunas de texto alinhadas, como num extrato)
+    const sb = acharTabelasSemBorda(livres, { horizontais: t.horizontais, retangulos: t.retangulos });
+    tabelas.push(...sb.tabelas);
+    livres = sb.livres;
+    for (const s of sb.usados.segmentos) ignorar.push(caixaDoSegmento(s, 'h'));
+    for (const r of sb.usados.retangulos) ignorar.push(r);
+    const restoH = marcarSublinhados(itens, sb.horizontais);
+    for (const s of sb.horizontais) if (!restoH.includes(s)) ignorar.push(caixaDoSegmento(s, 'h'));
+    const restoR = marcarRealces(livres, sb.retangulos);
+    for (const r of sb.retangulos) if (!restoR.includes(r)) ignorar.push(r);
   }
 
   // figuras
@@ -899,7 +977,12 @@ async function lerDocumento(caminho, { alvo = 'word', ocr: usarOcr = true, idiom
       if (p.semTexto) semTexto += 1;
       paginas.push(p);
     }
-    return { paginas, total: doc.numPages, ocr: comOcr, semTexto };
+    let programa = '';
+    try {
+      const { info } = await doc.getMetadata();
+      programa = [info && info.Creator, info && info.Producer].filter(Boolean).join(' | ');
+    } catch (_) { /* sem metadados */ }
+    return { paginas, total: doc.numPages, ocr: comOcr, semTexto, programa };
   } finally {
     doc.destroy();
   }

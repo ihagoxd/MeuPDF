@@ -257,7 +257,7 @@ export const FERRAMENTAS = [
   },
   {
     id: 'pdf-excel', titulo: 'PDF para Excel', icone: 'excel', cor: '#217346', categoria: 'de-pdf',
-    descricao: 'Tabelas do PDF viram planilha, com colunas, células mescladas, números e datas de verdade.',
+    descricao: 'Tabelas do PDF (com ou sem linhas, como num extrato) viram planilha, com colunas, números e datas de verdade.',
     aceita: PDF, extensoes: EXT_PDF, area: 'arquivos', acao: 'Converter para Excel',
     palavras: 'xlsx planilha tabela extrato converter',
     opcoes: [

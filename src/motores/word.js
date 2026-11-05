@@ -40,6 +40,7 @@ function rPr(s, { fonte } = {}) {
   if (s.cor && s.cor !== '000000') p += `<w:color w:val="${s.cor}"/>`;
   if (s.tamanho) p += `<w:sz w:val="${Math.max(2, Math.round(s.tamanho * 2))}"/><w:szCs w:val="${Math.max(2, Math.round(s.tamanho * 2))}"/>`;
   if (s.sublinhado) p += '<w:u w:val="single"/>';
+  if (s.vert) p += `<w:vertAlign w:val="${s.vert === 'super' ? 'superscript' : 'subscript'}"/>`;
   if (s.destaque) p += `<w:shd w:val="clear" w:color="auto" w:fill="${s.destaque}"/>`;
   return p ? `<w:rPr>${p}</w:rPr>` : '';
 }
@@ -62,7 +63,8 @@ function runComCampos(texto, s, campos, contador) {
     contador.n += 1;
     saida += run(resto.slice(0, m.index), s);
     if (tipo === 'PAGE' || tipo === 'NUMPAGES') {
-      saida += `<w:fldSimple w:instr=" ${tipo} ">${run(m[0], s)}</w:fldSimple>`;
+      // MERGEFORMAT: o número atualizado continua com a letra do rodapé
+      saida += `<w:fldSimple w:instr=" ${tipo} \\* MERGEFORMAT ">${run(m[0], s)}</w:fldSimple>`;
     } else saida += run(m[0], s);
     resto = resto.slice(m.index + m[0].length);
   }
@@ -252,6 +254,20 @@ function tabelaXml(t, area, ctx) {
       if (inicio && c.itens.length) {
         const areaCel = { x0: c.x0 + mar, x1: c.x1 - mar };
         const pars = estrutura.paragrafos(estrutura.montarLinhas(c.itens), areaCel, ctx.doc);
+        if (c.alinhamento === 'direita' || c.alinhamento === 'centro') {
+          // coluna de números (tabela sem borda): alinhada como no PDF, para continuar certa ao editar
+          for (const p of pars) {
+            if (p.tipo !== 'paragrafo' || p.marcador) continue;
+            p.alinhamento = c.alinhamento;
+            p.recuoPrimeira = 0;
+            p.tabs = [];
+            if (c.alinhamento === 'direita') { p.recuoEsq = 0; p.recuoDir = Math.max(0, areaCel.x1 - p.x1); } else {
+              const d = (p.x0 + p.x1) / 2 - (areaCel.x0 + areaCel.x1) / 2;
+              p.recuoEsq = Math.max(0, 2 * d);
+              p.recuoDir = Math.max(0, -2 * d);
+            }
+          }
+        }
         const objs = fluxoObjs(pars, areaCel, ctx, { topo: c.y0 + (c.bordas.t ? c.bordas.t.esp : 0) });
         conteudo = serializar(objs);
       }
@@ -333,9 +349,16 @@ function fluxoObjs(elementos, area, ctx, inicio) {
       ultimoP = o;
       fundoAnterior = el.fundo + 0.2;
     } else if (el.tipo === 'tabela' || el.tipo === 'colunas') {
+      if (el.tipo === 'colunas') {
+        let topo = el.topo;
+        for (const c of el.colunas) {
+          const p0 = c.elementos[0];
+          if (p0 && p0.tipo === 'paragrafo') topo = Math.min(topo, geometria(p0).topo);
+        }
+        el.topo = Math.max(fundoAnterior, topo);
+      }
       const folga = el.topo - fundoAnterior;
-      if (ultimoP && objs[objs.length - 1] === ultimoP) ultimoP.depois = Math.max(0, folga);
-      else if (folga > 0.5) objs.push({ tipo: 'p', antes: 0, linha: Math.max(1, folga), tamanhoMarca: 1, corpo: '', ancoras: [], topo: fundoAnterior, espacador: true });
+      if (folga > 0.5) objs.push({ tipo: 'p', antes: 0, linha: Math.max(1, folga), tamanhoMarca: 1, corpo: '', ancoras: [], topo: fundoAnterior, espacador: true });
       objs.push({ tipo: 'xml', xml: el.tipo === 'tabela' ? tabelaXml(el.tabela, area, ctx) : colunasXml(el, area, ctx), topo: el.topo });
       ultimoP = null;
       fundoAnterior = el.fundo;
@@ -435,8 +458,8 @@ function estilos(doc) {
     + '</w:styles>';
 }
 
-const CONFIG = `${XML}<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:defaultTabStop w:val="708"/><w:hyphenationZone w:val="425"/><w:characterSpacingControl w:val="doNotCompress"/>`
-  + '<w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>';
+const config = (compat) => `${XML}<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:defaultTabStop w:val="708"/><w:hyphenationZone w:val="425"/><w:characterSpacingControl w:val="doNotCompress"/>`
+  + `<w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="${compat}"/></w:compat></w:settings>`;
 
 /** Fonte mais usada no texto (vira a fonte padrão do documento). */
 function fonteDoCorpo(est) {
@@ -585,7 +608,7 @@ function docx({ titulo, estrutura: est }) {
     'docProps/app.xml': APP,
     'word/document.xml': documento,
     'word/styles.xml': estilos(doc),
-    'word/settings.xml': CONFIG,
+    'word/settings.xml': config(est.compat || 15),
     'word/_rels/document.xml.rels': rels(relsDoc),
     ...extras,
     ...midia.arquivos,

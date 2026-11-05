@@ -25,7 +25,7 @@ const ALINHAMENTO = { esquerda: 'l', centro: 'ctr', direita: 'r', justificado: '
 function rPr(s) {
   const tam = Math.max(100, Math.round((s.tamanho || 12) * 100));
   const f = x(s.fonte || 'Calibri');
-  return `<a:rPr lang="pt-BR" sz="${tam}" b="${s.negrito ? 1 : 0}" i="${s.italico ? 1 : 0}"${s.sublinhado ? ' u="sng"' : ''}${s.riscado ? ' strike="sngStrike"' : ''} dirty="0">`
+  return `<a:rPr lang="pt-BR" sz="${tam}" b="${s.negrito ? 1 : 0}" i="${s.italico ? 1 : 0}"${s.sublinhado ? ' u="sng"' : ''}${s.riscado ? ' strike="sngStrike"' : ''}${s.vert ? ` baseline="${s.vert === 'super' ? 30000 : -25000}"` : ''} dirty="0">`
     + `<a:solidFill><a:srgbClr val="${s.cor || '000000'}"/></a:solidFill>`
     + `<a:latin typeface="${f}"/><a:cs typeface="${f}"/></a:rPr>`;
 }

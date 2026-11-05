@@ -27,7 +27,7 @@ function moda(valores, passo = 1) {
   return melhor === null ? null : melhor * passo;
 }
 
-const chaveEstilo = (s) => `${s.fonte}|${s.tamanho}|${s.negrito}|${s.italico}|${s.sublinhado}|${s.riscado}|${s.cor}|${s.destaque}`;
+const chaveEstilo = (s) => `${s.fonte}|${s.tamanho}|${s.negrito}|${s.italico}|${s.sublinhado}|${s.riscado}|${s.cor}|${s.destaque}|${s.vert || ''}`;
 
 /* ============================================================
    LINHAS
@@ -50,6 +50,7 @@ function montarLinhas(itens) {
     alvo.itens.push(it);
     if (it.tamanho > alvo.tamanho) { alvo.tamanho = it.tamanho; alvo.base = it.base; }
   }
+  juntarSobrescritos(linhas);
   for (const l of linhas) {
     l.itens.sort((a, b) => a.x0 - b.x0);
     const segs = [];
@@ -58,12 +59,18 @@ function montarLinhas(itens) {
       let sep = '';
       if (anterior) {
         const folga = it.x0 - anterior.x1;
-        if (folga > Math.max(it.tamanho * 1.6, 10)) sep = '\t';
+        const espaco = it.espacoDesde != null && it.espacoDesde <= anterior.x1 + 1;
+        if (espaco) sep = /\s$/.test(anterior.texto) ? '' : ' ';
+        else if (folga > Math.max(it.tamanho * 1.6, 10)) sep = '\t';
         else if (folga > it.tamanho * 0.12 && !/\s$/.test(anterior.texto) && !/^\s/.test(it.texto)) sep = ' ';
       }
       const ultimo = segs[segs.length - 1];
       const texto = it.texto.replace(/\s+/g, ' ');
-      if (ultimo && sep !== '\t' && chaveEstilo(ultimo) === chaveEstilo(it)) {
+      // marcador de lista seguido de um vão ("•   texto", "1.   texto"): fica num pedaço só dele
+      const depoisDoMarcador = segs.length === 1 && ultimo.texto === ultimo.texto.trim() && MARCADOR.test(ultimo.texto)
+        && it.x0 - ultimo.x1 > it.tamanho * 0.45;
+      if (depoisDoMarcador && sep === ' ') sep = '';
+      if (ultimo && sep !== '\t' && !depoisDoMarcador && chaveEstilo(ultimo) === chaveEstilo(it)) {
         ultimo.texto += sep + texto;
         ultimo.x1 = Math.max(ultimo.x1, it.x1);
       } else {
@@ -74,6 +81,8 @@ function montarLinhas(itens) {
           fonte: it.fonte, tamanho: it.tamanho, negrito: it.negrito, italico: it.italico,
           sublinhado: it.sublinhado, riscado: it.riscado, cor: it.cor, destaque: it.destaque,
           base: it.base,
+          // sobrescrito: o Word e o PowerPoint diminuem a letra sozinhos (uns 2/3)
+          ...(it.vert ? { vert: it.vert, tamanho: Math.round(Math.min(it.tamanhoLinha, it.tamanho / 0.65) * 2) / 2 } : {}),
         });
       }
       anterior = it;
@@ -95,6 +104,29 @@ function montarLinhas(itens) {
     delete l.itens;
   }
   return linhas.filter((l) => l.segmentos.length);
+}
+
+/**
+ * Número de nota (¹), expoente (m²) e índice (H₂O): letra pequena um pouco acima
+ * ou abaixo da linha, colada no texto. Volta para a linha dela, marcada.
+ */
+function juntarSobrescritos(linhas) {
+  for (let i = linhas.length - 1; i >= 0; i -= 1) {
+    const l = linhas[i];
+    if (l.itens.length > 3 || l.itens.some((it) => it.texto.trim().length > 4)) continue;
+    let melhor = null;
+    for (const m of linhas) {
+      if (m === l || m.tamanho < l.tamanho * 1.2) continue;
+      const d = m.base - l.base;
+      const vert = d >= m.tamanho * 0.15 && d <= m.tamanho * 0.6 ? 'super' : d <= -m.tamanho * 0.08 && d >= -m.tamanho * 0.4 ? 'sub' : null;
+      if (!vert) continue;
+      const colado = l.itens.every((it) => m.itens.some((o) => Math.max(o.x0 - it.x1, it.x0 - o.x1) <= m.tamanho * 0.6));
+      if (colado && (!melhor || Math.abs(d) < Math.abs(melhor.d))) melhor = { m, d, vert };
+    }
+    if (!melhor) continue;
+    for (const it of l.itens) melhor.m.itens.push({ ...it, vert: melhor.vert, tamanhoLinha: melhor.m.tamanho, base: melhor.m.base });
+    linhas.splice(i, 1);
+  }
 }
 
 /** Largura aproximada da primeira palavra da linha (para saber se ela caberia na linha de cima). */
@@ -172,18 +204,52 @@ function vaos(caixas, minimo) {
  */
 function juntarFaixasComColunas(faixas, tamanho) {
   const minimo = Math.max(9, tamanho * 0.9);
-  const saida = [];
-  let atual = null;
+  const ext = (cs) => ({
+    x0: Math.min(...cs.map((c) => c.x0)), x1: Math.max(...cs.map((c) => c.x1)),
+    y0: Math.min(...cs.map((c) => c.y0)), y1: Math.max(...cs.map((c) => c.y1)),
+  });
+  const colunasDe = (cs, vs) => {
+    const e = ext(cs);
+    const cols = [];
+    let a = e.x0;
+    for (const [v0, v1] of vs) { cols.push([a, v0]); a = v1; }
+    cols.push([a, e.x1]);
+    return cols;
+  };
+  // a faixa cabe inteira numa das colunas (o fim de uma coluna mais comprida que a outra)
+  const cabe = (cs, cols) => { const e = ext(cs); return cols.some(([a, b]) => e.x0 >= a - 3 && e.x1 <= b + 3 && e.x0 - a <= (b - a) * 0.15 + 3); };
+  const perto = (cima, baixo) => ext(baixo).y0 - ext(cima).y1 <= tamanho * 1.8;
+  // 1) faixas seguidas com um vão vertical em comum: uma faixa só
+  const grupos = [];
   for (const f of faixas) {
     const v = vaos(f, minimo);
-    if (atual && v.length) {
-      const comum = atual.vaos.map((a) => v.map((b) => [Math.max(a[0], b[0]), Math.min(a[1], b[1])]).filter((c) => c[1] - c[0] >= 4)).flat();
-      if (comum.length) { atual.caixas.push(...f); atual.vaos = comum; continue; }
+    const u = grupos[grupos.length - 1];
+    if (u && v.length && u.vaos.length) {
+      const comum = u.vaos.map((a) => v.map((b) => [Math.max(a[0], b[0]), Math.min(a[1], b[1])]).filter((c) => c[1] - c[0] >= 4)).flat();
+      if (comum.length) { u.caixas.push(...f); u.vaos = comum; continue; }
     }
-    atual = { caixas: f.slice(), vaos: v };
-    saida.push(atual);
+    grupos.push({ caixas: f.slice(), vaos: v });
   }
-  return saida.map((s) => s.caixas);
+  // 2) o começo e o fim de uma coluna mais comprida que a outra entram no bloco de colunas
+  //    (em cima, só as linhas coladas: um título separa)
+  const saida = [];
+  for (let i = 0; i < grupos.length; i += 1) {
+    const g = grupos[i];
+    if (!g.vaos.length) { saida.push(g); continue; }
+    const cols = colunasDe(g.caixas, g.vaos);
+    while (saida.length) {
+      const ant = saida[saida.length - 1];
+      if (ant.vaos.length || ext(g.caixas).y0 - ext(ant.caixas).y1 > tamanho * 0.9 || !cabe(ant.caixas, cols)) break;
+      g.caixas.push(...ant.caixas);
+      saida.pop();
+    }
+    while (i + 1 < grupos.length && !grupos[i + 1].vaos.length && perto(g.caixas, grupos[i + 1].caixas) && cabe(grupos[i + 1].caixas, cols)) {
+      g.caixas.push(...grupos[i + 1].caixas);
+      i += 1;
+    }
+    saida.push(g);
+  }
+  return saida.map((x) => x.caixas);
 }
 
 function cortarXY(caixas, tamanho, prof = 0) {
@@ -246,9 +312,10 @@ function paragrafos(linhas, area, doc, flutuantes = []) {
       continue;
     }
     l.limites = limites(l);
+    if (area.unicaNaBorda) l.semBorda = true;
     if (p && continua(p, l, doc)) {
       const ant = p.linhas[p.linhas.length - 1];
-      const coube = ant.x1 + ant.tamanho * 0.28 + primeiraPalavra(l) <= ant.limites.dir + 1;
+      const coube = l.semBorda || ant.x1 + ant.tamanho * 0.28 + primeiraPalavra(l) <= ant.limites.dir + 1;
       ant.juntar = coube ? 'quebra' : /-$/.test(ant.texto) ? '' : ' ';
       p.linhas.push(l);
     } else {
@@ -289,7 +356,7 @@ function continua(p, l, doc) {
   }
   if (!alinhada && !centralizadas && !direita) return false;
   // a linha de cima acabou por falta de espaço? senão é fim de parágrafo (ou quebra manual)
-  const coube = ant.x1 + ant.tamanho * 0.28 + primeiraPalavra(l) <= ant.limites.dir + 1;
+  const coube = l.semBorda || ant.x1 + ant.tamanho * 0.28 + primeiraPalavra(l) <= ant.limites.dir + 1;
   if (coube && FIM_DE_FRASE.test(ant.texto.trim()) && !centralizadas && !direita) return false;
   if (coube && alinhada && !centralizadas && ant.x1 - ant.x0 > (ant.limites.dir - ant.limites.esq) * 0.8) return false;
   return true;
@@ -302,6 +369,8 @@ function finalizar(p, area, doc) {
   const ultima = L[n - 1];
   const largura = (l) => l.limites.dir - l.limites.esq;
   const folgaDir = (l) => l.limites.dir - l.x1;
+  // duas linhas numa coluna cuja largura vem só da primeira: quebra manual, não "não coube"
+  if (n === 2 && area.unicaNaBorda && primeira.juntar === ' ') primeira.juntar = 'quebra';
   const relX0 = (l) => l.x0 - l.limites.esq;
   // entrelinha
   const passos = [];
@@ -492,6 +561,24 @@ function separarCabecalhoRodape(paginas) {
    PÁGINA
    ============================================================ */
 
+/**
+ * Rótulos curtos colados do lado de fora de um desenho (números do eixo e meses
+ * de um gráfico): vão junto com ele, por cima, no lugar exato.
+ */
+function satelites(f, itens) {
+  if (f.x1 - f.x0 < 20 || f.y1 - f.y0 < 20) return [];
+  return itens.filter((it) => {
+    const t = it.texto.trim();
+    if (!t || t.length > 6) return false;
+    const dx = Math.max(f.x0 - it.x1, it.x0 - f.x1, 0);
+    const dy = Math.max(f.y0 - it.fundo, it.topo - f.y1, 0);
+    if ((dx === 0 && dy === 0) || dx > it.tamanho * 1.5 || dy > it.tamanho * 1.2) return false;
+    // sozinho: sem texto comprido colado na mesma linha
+    return !itens.some((o) => o !== it && Math.abs(o.base - it.base) < it.tamanho * 0.5
+      && Math.max(o.x0 - it.x1, it.x0 - o.x1) < it.tamanho * 1.2 && o.texto.trim().length > 6);
+  });
+}
+
 function itemDentro(it, f, folga = 1) {
   const cx = (it.x0 + it.x1) / 2;
   const cy = (it.topo + it.base) / 2;
@@ -508,11 +595,29 @@ function estruturarPagina(p, doc, area) {
   const flutuantes = [];
   const soltas = [];
   const areaPagina = p.largura * p.altura;
+  let linhasCache = null;
+  // pedaços de linha (cortados nas tabulações: duas colunas na mesma altura não são uma linha só)
+  const linhasDaPagina = () => {
+    if (linhasCache) return linhasCache;
+    linhasCache = [];
+    for (const l of montarLinhas(itens)) {
+      let atual = null;
+      for (const sg of l.segmentos) {
+        if (!atual || sg.tab) { atual = { x0: sg.x0, x1: sg.x1, topo: l.topo, fundo: l.fundo, tamanho: l.tamanho }; linhasCache.push(atual); }
+        atual.x1 = Math.max(atual.x1, sg.x1);
+      }
+    }
+    return linhasCache;
+  };
 
   for (const f of p.figuras) {
     const fa = (f.x1 - f.x0) * (f.y1 - f.y0);
     if (fa >= areaPagina * 0.6) { flutuantes.push({ ...f, modo: 'atras' }); continue; }
-    const dentro = itens.filter((it) => itemDentro(it, f));
+    // na margem, fora da área do texto (carimbo vertical do e-SAJ, faixa lateral): solta no lugar
+    if (f.x0 >= area.x1 - 2 || f.x1 <= area.x0 + 2) { flutuantes.push({ ...f, modo: 'atras' }); continue; }
+    let dentro = itens.filter((it) => itemDentro(it, f));
+    const sat = satelites(f, itens);
+    if ((dentro.length >= 2 && sat.length) || sat.length >= 3) dentro = dentro.concat(sat);
     if (dentro.length) {
       // texto por cima da figura (caixa colorida, gráfico, faixa): figura atrás e o texto no lugar exato
       flutuantes.push({ ...f, modo: 'atras' });
@@ -521,7 +626,15 @@ function estruturarPagina(p, doc, area) {
       continue;
     }
     const lado = itens.filter((it) => it.topo < f.y1 - 1 && it.fundo > f.y0 + 1 && (it.x1 <= f.x0 || it.x0 >= f.x1));
-    if (lado.length) {
+    // Texto contornando a figura: a linha logo acima ou logo abaixo passa por cima dela
+    // e do texto ao lado. Senão são colunas (a figura é de uma delas) e vai para o corte.
+    const envolve = lado.length && (() => {
+      const lx0 = Math.min(...lado.map((it) => it.x0));
+      const lx1 = Math.max(...lado.map((it) => it.x1));
+      return linhasDaPagina().some((l) => ((l.fundo <= f.y0 + 1 && f.y0 - l.fundo <= l.tamanho * 1.5) || (l.topo >= f.y1 - 1 && l.topo - f.y1 <= l.tamanho * 1.5))
+        && l.x0 < f.x1 - 2 && l.x1 > f.x0 + 2 && l.x0 < lx1 && l.x1 > lx0);
+    })();
+    if (lado.length && envolve) {
       const aEsq = lado.filter((it) => it.x1 <= f.x0);
       const aDir = lado.filter((it) => it.x0 >= f.x1);
       flutuantes.push({
@@ -532,9 +645,26 @@ function estruturarPagina(p, doc, area) {
       });
     } else soltas.push(f);
   }
+  for (const f of soltas.slice()) {
+    const cx = (f.x0 + f.x1) / 2;
+    const cy = (f.y0 + f.y1) / 2;
+    if (p.tabelas.some((t) => cx > t.x0 && cx < t.x1 && cy > t.y0 && cy < t.y1)) {
+      soltas.splice(soltas.indexOf(f), 1);
+      flutuantes.push({ ...f, modo: 'atras' });
+    }
+  }
+  // figura no pé da página, sem nada embaixo (filete, carimbo, código): fica solta no
+  // lugar; na linha do texto ela poderia não caber e empurrar tudo para outra página
+  const maisBaixo = Math.max(-Infinity, ...itens.map((it) => it.fundo), ...p.tabelas.map((t) => t.y1));
+  for (const f of soltas.slice()) {
+    if (f.y0 >= maisBaixo - 1 && f.y1 > p.altura * 0.85) {
+      soltas.splice(soltas.indexOf(f), 1);
+      flutuantes.push({ ...f, modo: 'atras' });
+    }
+  }
 
   const caixas = [
-    ...itens.map((it) => ({ tipo: 'item', x0: it.x0, x1: it.x1, y0: it.topo, y1: it.fundo, ref: it })),
+    ...itens.map((it) => ({ tipo: 'item', x0: it.espacoDesde != null ? Math.min(it.x0, it.espacoDesde) : it.x0, x1: it.x1, y0: it.topo, y1: it.fundo, ref: it })),
     ...soltas.map((f) => ({ tipo: 'figura', x0: f.x0, x1: f.x1, y0: f.y0, y1: f.y1, ref: f })),
     ...p.tabelas.map((t) => ({ tipo: 'tabela', x0: t.x0, x1: t.x1, y0: t.y0, y1: t.y1, ref: t })),
   ];
@@ -566,7 +696,7 @@ function montarFluxo(no, area, doc, flutuantes) {
         x0: c.a0,
         x1: c.a1,
         conteudo: { x0: c.x0, x1: c.x1 },
-        elementos: montarFluxo(c.no, { x0: c.x0, x1: c.x1 }, doc, flutuantes),
+        elementos: montarFluxo(c.no, { x0: c.x0, x1: c.x1, unicaNaBorda: unicaNaBorda(c) }, doc, flutuantes),
       })),
     }];
   }
@@ -595,6 +725,15 @@ function montarFluxo(no, area, doc, flutuantes) {
   descarregar();
   for (const t of tabs) saida.push({ tipo: 'tabela', tabela: t, topo: t.y0, fundo: t.y1 });
   return saida;
+}
+
+/**
+ * A borda direita da coluna é dada por uma linha só? Então não dá para saber
+ * se a linha de baixo "não coube" nela (bloco de endereço, rótulo e valor).
+ */
+function unicaNaBorda(c) {
+  const bases = new Set(todasCaixas(c.no).filter((b) => b.tipo === 'item' && Math.abs(b.x1 - c.x1) <= 1.5).map((b) => Math.round(b.ref.base)));
+  return bases.size <= 1;
 }
 
 function todasCaixas(no) {
@@ -670,6 +809,7 @@ function encolherPagina(p, s) {
   for (const t of p.tabelas) {
     for (const k of ['x0', 'y0', 'x1', 'y1']) t[k] *= s;
     t.colunas = t.colunas.map((v) => v * s);
+    if (t.conteudo) t.conteudo = { x0: t.conteudo.x0 * s, x1: t.conteudo.x1 * s };
     t.linhas = t.linhas.map((v) => v * s);
     for (const c of t.celulas) {
       for (const k of ['x0', 'y0', 'x1', 'y1']) c[k] *= s;
@@ -730,6 +870,11 @@ function estruturar(lido) {
       // texto justificado: muitas linhas acabam no mesmo ponto; texto solto à direita: vale a mais comprida
       const noPonto = lp.filter((l) => Math.abs(l.x1 - x1) <= 1.5).length;
       if (noPonto < Math.max(3, lp.length * 0.35)) x1 = Math.max(...lp.map((l) => l.x1));
+    } else if (p.tabelas.length) {
+      // página quase só de tabela (extrato): as margens vêm do texto e da tabela
+      const caixas = [...ls, ...p.tabelas.map((t) => t.conteudo || t)];
+      x0 = Math.min(...caixas.map((c) => c.x0));
+      x1 = Math.max(...caixas.map((c) => c.x1));
     } else if (ls.length && (esqDoc == null || dirDoc == null
       || Math.min(...ls.map((l) => l.x0)) < esqDoc - 5 || Math.max(...ls.map((l) => l.x1)) > dirDoc + 5)) {
       // página diferente das outras (slide, capa): margens pelas próprias linhas
@@ -756,7 +901,19 @@ function estruturar(lido) {
   const areaDe = (f) => areas[Math.max(0, paginas.findIndex((p) => p.numero === f.pagina))];
   const cab = cabecalho ? estruturarFaixa(cabecalho, doc, areaDe(cabecalho)) : null;
   const rod = rodape ? estruturarFaixa(rodape, doc, areaDe(rodape)) : null;
-  return { paginas: saida, cabecalho: cab, rodape: rod, doc };
+  return { paginas: saida, cabecalho: cab, rodape: rod, doc, compat: modoDoWord(lido.programa) };
+}
+
+/**
+ * Modo de compatibilidade do DOCX. O Word 2013 em diante aperta os espaços do
+ * texto justificado para caber mais uma palavra na linha; os outros programas
+ * (navegador, sistema do tribunal, LibreOffice, scanner) não. Para as linhas
+ * quebrarem onde o PDF quebrou: modo 2013+ só para PDF feito pelo Word novo.
+ * @param {string} [programa]  Creator/Producer do PDF
+ */
+function modoDoWord(programa = '') {
+  if (!/microsoft/i.test(programa) || !/word/i.test(programa)) return 14;
+  return /word (97|2000|2002|2003|2007|2010)/i.test(programa) ? 14 : 15;
 }
 
 function estruturarFaixa(f, doc, area) {

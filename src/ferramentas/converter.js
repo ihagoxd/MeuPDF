@@ -462,7 +462,9 @@ function linhasDaPlanilha(p, celula) {
       const t = b.tabela;
       const inicio = linhas.length;
       const nl = t.linhas.length - 1;
-      for (let r = 0; r < nl; r += 1) linhas.push(new Array(t.colunas.length - 1).fill(null).map(() => ({ valor: '', tipo: 'texto', borda: true })));
+      // tabela sem linhas no PDF (extrato) fica sem borda na planilha também
+      const borda = !t.semBorda;
+      for (let r = 0; r < nl; r += 1) linhas.push(new Array(t.colunas.length - 1).fill(null).map(() => ({ valor: '', tipo: 'texto', borda })));
       for (const c of t.celulas) {
         const ordem = c.itens.slice().sort((x, y) => x.base - y.base || x.x0 - y.x0);
         let txt = '';
@@ -473,7 +475,7 @@ function linhasDaPlanilha(p, celula) {
         });
         txt = txt.replace(/\s+/g, ' ').trim();
         const negrito = ordem.length > 0 && ordem.every((it) => it.negrito);
-        linhas[inicio + c.lin][c.col] = { ...celula(txt, negrito), borda: true };
+        linhas[inicio + c.lin][c.col] = { ...celula(txt, negrito), borda };
         if (c.spanC > 1 || c.spanL > 1) {
           mesclas.push(`${ooxml.colunaLetra(c.col)}${inicio + c.lin + 1}:${ooxml.colunaLetra(c.col + c.spanC - 1)}${inicio + c.lin + c.spanL}`);
         }

@@ -69,8 +69,10 @@ e enviar de novo.
 
 - **PDF para Word igual ao original** — o texto sai editável com a fonte, o
   tamanho e a cor do PDF; fotos, logos e assinaturas ficam no lugar certo;
-  tabelas com borda viram tabelas do Word; listas, colunas, cabeçalho e rodapé
-  (com o número da página) também. PDF digitalizado passa pelo OCR sozinho.
+  tabelas viram tabelas do Word, com ou sem linhas desenhadas (extrato
+  bancário, relatório); listas, colunas, notas de rodapé, cabeçalho e rodapé
+  (com o número da página) também. Funciona com PDF do Word, do navegador e
+  dos sistemas dos tribunais, e PDF digitalizado passa pelo OCR sozinho.
 - **PowerPoint editável** — cada página vira um slide igual, com o texto em
   caixas de texto e as imagens soltas, prontas para mover.
 - **Comprimir sem estragar o texto** — só as imagens são recomprimidas; o texto
