@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * Leitura "inteligente" do texto do PDF: linhas, colunas de tabela,
- * parágrafos e títulos. Base do PDF para Word/Excel/texto e da tarja
- * automática.
+ * Leitura "inteligente" do texto do PDF: linhas e colunas de tabela.
+ * Base do PDF para texto/Excel e da tarja automática (o Word e o
+ * PowerPoint usam a leitura completa de leitura.js).
  */
 
 const pdfjs = require('./pdfjs');
@@ -143,7 +143,7 @@ function blocos(linhas) {
 }
 
 /* ============================================================
-   PARÁGRAFOS (para o Word)
+   TAMANHO DO CORPO
    ============================================================ */
 
 function tamanhoDoCorpo(linhas) {
@@ -156,91 +156,6 @@ function tamanhoDoCorpo(linhas) {
   let max = 0;
   for (const [t, n] of contagem) if (n > max) { max = n; melhor = t; }
   return melhor;
-}
-
-/**
- * Transforma as linhas de uma página em parágrafos e tabelas.
- * @returns {{tipo:'paragrafo'|'titulo'|'tabela', ...}[]}
- */
-function estruturar(linhas, larguraPagina, corpo) {
-  const itens = [];
-  const margemEsq = linhas.length ? Math.min(...linhas.map((l) => l.x0)) : 0;
-  const margemDir = linhas.length ? Math.max(...linhas.map((l) => l.x1)) : larguraPagina;
-  const larguraTexto = Math.max(margemDir - margemEsq, 1);
-  let atual = null;
-
-  const fechar = () => { if (atual) { itens.push(atual); atual = null; } };
-
-  for (const b of blocos(linhas)) {
-    if (b.tipo === 'tabela') {
-      fechar();
-      itens.push({ tipo: 'tabela', grade: b.grade });
-      continue;
-    }
-    const l = b.linha;
-    const centro = (l.x0 + l.x1) / 2;
-    const centralizada = l.x1 - l.x0 < larguraTexto * 0.8 && Math.abs(centro - (margemEsq + margemDir) / 2) < larguraTexto * 0.06;
-    const nivel = l.tamanho >= corpo * 1.55 ? 1 : l.tamanho >= corpo * 1.18 ? 2 : 0;
-    const tituloNegrito = !nivel && l.negrito && l.texto.length < 90 && !/[.,;:]$/.test(l.texto);
-
-    if (nivel) {
-      fechar();
-      itens.push({ tipo: 'titulo', nivel, segmentos: l.segmentos, alinhamento: centralizada ? 'center' : 'left' });
-      continue;
-    }
-
-    const continua = atual && !tituloNegrito && !atual.titulo
-      && Math.abs(l.tamanho - atual.tamanho) < 1.2
-      && l.base - atual.ultimaBase < l.tamanho * 1.9
-      && !atual.terminou
-      && Math.abs(l.x0 - atual.x0Corpo) < l.tamanho * 2.5
-      && atual.centralizado === centralizada;
-
-    if (!continua) {
-      fechar();
-      atual = {
-        tipo: 'paragrafo',
-        segmentos: [],
-        tamanho: l.tamanho,
-        x0Corpo: l.x0,
-        recuo: Math.max(0, l.x0 - margemEsq),
-        centralizado: centralizada,
-        alinhamento: centralizada ? 'center' : 'left',
-        titulo: tituloNegrito,
-        ultimaBase: l.base,
-        terminou: false,
-      };
-    } else {
-      // junta com a linha anterior: hífen de quebra some, senão entra um espaço
-      const ultimo = atual.segmentos[atual.segmentos.length - 1];
-      if (ultimo && /[a-zà-ú]-$/i.test(ultimo.texto) && /^[a-zà-ú]/.test(l.texto)) {
-        ultimo.texto = ultimo.texto.slice(0, -1);
-      } else if (ultimo) {
-        ultimo.texto += ' ';
-      }
-      if (atual.recuo > 0 && l.x0 < atual.x0Corpo) atual.x0Corpo = l.x0;
-    }
-    for (const s of l.segmentos) atual.segmentos.push({ ...s });
-    atual.ultimaBase = l.base;
-    // linha curta = provável fim de parágrafo
-    atual.terminou = tituloNegrito || l.x1 < margemDir - larguraTexto * 0.18 || /[.:!?]["”')]?$/.test(l.texto) && l.x1 < margemDir - l.tamanho * 2;
-  }
-  fechar();
-
-  for (const p of itens) {
-    if (p.tipo === 'paragrafo') {
-      p.recuoPrimeira = p.recuo > 8 && p.recuo < larguraTexto * 0.3 ? p.recuo : 0;
-      // segmentos vizinhos com o mesmo estilo viram um só
-      const juntos = [];
-      for (const s of p.segmentos) {
-        const u = juntos[juntos.length - 1];
-        if (u && u.negrito === s.negrito && u.italico === s.italico) u.texto += s.texto;
-        else juntos.push({ ...s });
-      }
-      p.segmentos = juntos;
-    }
-  }
-  return itens;
 }
 
 /* ============================================================
@@ -436,7 +351,6 @@ module.exports = {
   montarLinhas,
   blocos,
   colunasDe,
-  estruturar,
   tamanhoDoCorpo,
   lerDocumento,
   textoDaPagina,

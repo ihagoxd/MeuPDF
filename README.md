@@ -55,7 +55,7 @@ algo que falta aparecem marcadas como indisponíveis, em vez de falhar depois.
 | **Organizar** | Juntar (com marcadores por documento e opção de frente e verso) · Dividir (por intervalos, a cada N páginas, página por página ou **por tamanho máximo**, para limites de envio como o do PJe) · Remover páginas · Extrair páginas · Organizar (arrastar, girar, duplicar, apagar e inserir páginas em branco, misturando arquivos) · Girar |
 | **Otimizar** | Comprimir · OCR em português e inglês · Reparar |
 | **Converter para PDF** | Imagens (JPG, PNG, TIFF de várias páginas, WebP, GIF, BMP) · Word · Excel · PowerPoint · Páginas da internet |
-| **Converter de PDF** | JPG/PNG (páginas inteiras ou só as imagens de dentro) · Word · Excel · PowerPoint · Texto · PDF/A |
+| **Converter de PDF** | JPG/PNG (páginas inteiras ou só as imagens de dentro, com a transparência) · Word e PowerPoint editáveis · Excel · Texto · PDF/A |
 | **Editar** | Editar (texto, imagem, caixa, destaque, cobrir com branco) · Assinar · Numerar (inclusive `Fls. 12` e pulando a capa) · Marca d'água · Recortar · Propriedades · Achatar formulários e anotações |
 | **Segurança** | Proteger com senha (AES-256) · Desbloquear · Tarjar · Comparar duas versões |
 
@@ -67,6 +67,12 @@ e enviar de novo.
 
 ### Destaques
 
+- **PDF para Word igual ao original** — o texto sai editável com a fonte, o
+  tamanho e a cor do PDF; fotos, logos e assinaturas ficam no lugar certo;
+  tabelas com borda viram tabelas do Word; listas, colunas, cabeçalho e rodapé
+  (com o número da página) também. PDF digitalizado passa pelo OCR sozinho.
+- **PowerPoint editável** — cada página vira um slide igual, com o texto em
+  caixas de texto e as imagens soltas, prontas para mover.
 - **Comprimir sem estragar o texto** — só as imagens são recomprimidas; o texto
   continua selecionável e o arquivo nunca sai maior que o original.
 - **OCR que não mexe na página** — o texto reconhecido entra como uma camada

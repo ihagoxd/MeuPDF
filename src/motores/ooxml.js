@@ -87,45 +87,11 @@ const NS_W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/m
 
 const ESTILOS_WORD = `${XML}<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`
   + '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="pt-BR" w:eastAsia="en-US" w:bidi="ar-SA"/></w:rPr></w:rPrDefault>'
-  + '<w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>'
+  + '<w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>'
   + '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>'
-  + '<w:style w:type="paragraph" w:styleId="Ttulo1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="9"/><w:qFormat/>'
-  + '<w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr></w:style>'
-  + '<w:style w:type="paragraph" w:styleId="Ttulo2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="9"/><w:qFormat/>'
-  + '<w:pPr><w:keepNext/><w:spacing w:before="200" w:after="80"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:sz w:val="26"/><w:szCs w:val="26"/></w:rPr></w:style>'
-  + '<w:style w:type="table" w:default="1" w:styleId="TabelaNormal"><w:name w:val="Normal Table"/><w:uiPriority w:val="99"/><w:semiHidden/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>'
-  + '<w:style w:type="table" w:styleId="Tabelacomgrade"><w:name w:val="Table Grid"/><w:basedOn w:val="TabelaNormal"/><w:uiPriority w:val="39"/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>'
-  + '<w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders></w:tblPr></w:style>'
   + '</w:styles>';
 
 const CONFIG_WORD = `${XML}<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:defaultTabStop w:val="708"/><w:hyphenationZone w:val="425"/><w:characterSpacingControl w:val="doNotCompress"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`;
-
-function runWord(texto, { negrito, italico, tamanho } = {}) {
-  if (!texto) return '';
-  const props = (negrito ? '<w:b/><w:bCs/>' : '') + (italico ? '<w:i/><w:iCs/>' : '')
-    + (tamanho ? `<w:sz w:val="${Math.round(tamanho * 2)}"/><w:szCs w:val="${Math.round(tamanho * 2)}"/>` : '');
-  return `<w:r>${props ? `<w:rPr>${props}</w:rPr>` : ''}<w:t xml:space="preserve">${x(texto)}</w:t></w:r>`;
-}
-
-function paragrafoWord(segmentos, { estilo, alinhamento, recuoPrimeira, tamanho, quebraAntes } = {}) {
-  const pPr = (estilo ? `<w:pStyle w:val="${estilo}"/>` : '')
-    + (quebraAntes ? '<w:pageBreakBefore/>' : '')
-    + (recuoPrimeira ? `<w:ind w:firstLine="${Math.round(recuoPrimeira * TWIP)}"/>` : '')
-    + (alinhamento && alinhamento !== 'left' ? `<w:jc w:val="${alinhamento}"/>` : '');
-  const runs = segmentos.map((s) => runWord(s.texto, { negrito: s.negrito, italico: s.italico, tamanho })).join('');
-  return `<w:p>${pPr ? `<w:pPr>${pPr}</w:pPr>` : ''}${runs}</w:p>`;
-}
-
-function tabelaWord(grade, larguraUtilPt) {
-  const colunas = Math.max(...grade.map((l) => l.celulas.length));
-  const larguraCol = Math.floor((larguraUtilPt * TWIP) / colunas);
-  const linhas = grade.map((l) => `<w:tr>${Array.from({ length: colunas }, (_, i) => {
-    const t = l.celulas[i] || '';
-    return `<w:tc><w:tcPr><w:tcW w:w="${larguraCol}" w:type="dxa"/></w:tcPr><w:p>${runWord(t, { negrito: l.negrito && l.negrito[i] })}</w:p></w:tc>`;
-  }).join('')}</w:tr>`).join('');
-  return '<w:tbl><w:tblPr><w:tblStyle w:val="Tabelacomgrade"/><w:tblW w:w="0" w:type="auto"/><w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/></w:tblPr>'
-    + `<w:tblGrid>${Array.from({ length: colunas }, () => `<w:gridCol w:w="${larguraCol}"/>`).join('')}</w:tblGrid>${linhas}</w:tbl><w:p/>`;
-}
 
 function imagemWord(rid, id, larguraPt, alturaPt) {
   const cx = Math.round(larguraPt * PT);
@@ -140,13 +106,13 @@ function imagemWord(rid, id, larguraPt, alturaPt) {
 }
 
 /**
+ * Word com cada página do PDF como imagem ("Página como imagem").
+ * O Word editável é montado em word.js.
  * @param {object} doc
  * @param {string} doc.titulo
- * @param {{largura:number, altura:number, itens?:any[], imagem?:{bytes:Buffer, largura:number, altura:number}}[]} doc.paginas
- *   itens: saída de texto.estruturar() (parágrafos, títulos e tabelas)
- * @param {'texto'|'imagem'} doc.modo
+ * @param {{largura:number, altura:number, imagem:{bytes:Buffer}}[]} doc.paginas
  */
-function docx({ titulo, paginas, modo = 'texto' }) {
+function docx({ titulo, paginas }) {
   const midia = {};
   const relsDoc = [
     { id: 'rIdEstilos', tipo: R.estilos, alvo: 'styles.xml' },
@@ -154,42 +120,16 @@ function docx({ titulo, paginas, modo = 'texto' }) {
   ];
   const corpo = [];
   const primeira = paginas[0] || { largura: 595.28, altura: 841.89 };
-  let sect;
-
-  if (modo === 'imagem') {
-    paginas.forEach((p, i) => {
-      const rid = `rIdImg${i + 1}`;
-      midia[`word/media/pagina${i + 1}.jpeg`] = p.imagem.bytes;
-      relsDoc.push({ id: rid, tipo: R.imagem, alvo: `media/pagina${i + 1}.jpeg` });
-      // cabe na página do Word (que tem o tamanho da 1ª página do PDF)
-      const escala = Math.min(primeira.largura / p.largura, (primeira.altura - 2) / p.altura, 1);
-      const pPr = `<w:pPr>${i ? '<w:pageBreakBefore/>' : ''}<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="center"/></w:pPr>`;
-      corpo.push(`<w:p>${pPr}${imagemWord(rid, i + 1, p.largura * escala, p.altura * escala)}</w:p>`);
-    });
-    sect = `<w:sectPr><w:pgSz w:w="${Math.round(primeira.largura * TWIP)}" w:h="${Math.round(primeira.altura * TWIP)}"${primeira.largura > primeira.altura ? ' w:orient="landscape"' : ''}/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr>`;
-  } else {
-    const margem = 56.7; // 2 cm
-    const larguraUtil = primeira.largura - margem * 2;
-    paginas.forEach((p, i) => {
-      let primeiraDaPagina = i > 0;
-      for (const item of p.itens || []) {
-        if (item.tipo === 'tabela') {
-          if (primeiraDaPagina) { corpo.push('<w:p><w:pPr><w:pageBreakBefore/></w:pPr></w:p>'); primeiraDaPagina = false; }
-          corpo.push(tabelaWord(item.grade, larguraUtil));
-        } else if (item.tipo === 'titulo') {
-          corpo.push(paragrafoWord(item.segmentos.map((s) => ({ ...s, negrito: false })), { estilo: item.nivel === 1 ? 'Ttulo1' : 'Ttulo2', alinhamento: item.alinhamento, quebraAntes: primeiraDaPagina }));
-          primeiraDaPagina = false;
-        } else {
-          corpo.push(paragrafoWord(item.segmentos, { alinhamento: item.alinhamento, recuoPrimeira: item.recuoPrimeira, quebraAntes: primeiraDaPagina }));
-          primeiraDaPagina = false;
-        }
-      }
-      if (primeiraDaPagina) corpo.push('<w:p><w:pPr><w:pageBreakBefore/></w:pPr></w:p>');
-    });
-    if (!corpo.length) corpo.push('<w:p/>');
-    const tw = (pt) => Math.round(pt * TWIP);
-    sect = `<w:sectPr><w:pgSz w:w="${tw(primeira.largura)}" w:h="${tw(primeira.altura)}"${primeira.largura > primeira.altura ? ' w:orient="landscape"' : ''}/><w:pgMar w:top="${tw(margem)}" w:right="${tw(margem)}" w:bottom="${tw(margem)}" w:left="${tw(margem)}" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>`;
-  }
+  paginas.forEach((p, i) => {
+    const rid = `rIdImg${i + 1}`;
+    midia[`word/media/pagina${i + 1}.jpeg`] = p.imagem.bytes;
+    relsDoc.push({ id: rid, tipo: R.imagem, alvo: `media/pagina${i + 1}.jpeg` });
+    // cabe na página do Word (que tem o tamanho da 1ª página do PDF)
+    const escala = Math.min(primeira.largura / p.largura, (primeira.altura - 2) / p.altura, 1);
+    const pPr = `<w:pPr>${i ? '<w:pageBreakBefore/>' : ''}<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="center"/></w:pPr>`;
+    corpo.push(`<w:p>${pPr}${imagemWord(rid, i + 1, p.largura * escala, p.altura * escala)}</w:p>`);
+  });
+  const sect = `<w:sectPr><w:pgSz w:w="${Math.round(primeira.largura * TWIP)}" w:h="${Math.round(primeira.altura * TWIP)}"${primeira.largura > primeira.altura ? ' w:orient="landscape"' : ''}/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr>`;
 
   const documento = `${XML}<w:document ${NS_W}><w:body>${corpo.join('')}${sect}</w:body></w:document>`;
   return empacotar({
@@ -224,17 +164,20 @@ const ESTILOS_EXCEL = `${XML}<styleSheet xmlns="http://schemas.openxmlformats.or
   + '<numFmts count="2"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/><numFmt numFmtId="165" formatCode="&quot;R$&quot;\\ #,##0.00"/></numFmts>'
   + '<fonts count="2"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font></fonts>'
   + '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
-  + '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+  + '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>'
+  + '<border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal/></border></borders>'
   + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-  + '<cellXfs count="8">'
-  + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
-  + '<xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
-  + '<xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
-  + '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
-  + '<xf numFmtId="10" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
-  + '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
-  + '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
-  + '<xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+  // 0-7 sem borda; 8-15 os mesmos com borda fina (células de tabela do PDF)
+  + `<cellXfs count="16">${[0, 1].flatMap((borda) => [
+    'numFmtId="0" fontId="0"',
+    'numFmtId="4" fontId="0" applyNumberFormat="1"',
+    'numFmtId="3" fontId="0" applyNumberFormat="1"',
+    'numFmtId="165" fontId="0" applyNumberFormat="1"',
+    'numFmtId="10" fontId="0" applyNumberFormat="1"',
+    'numFmtId="164" fontId="0" applyNumberFormat="1"',
+    'numFmtId="0" fontId="1" applyFont="1"',
+    'numFmtId="49" fontId="0" applyNumberFormat="1"',
+  ].map((base) => `<xf ${base} fillId="0" borderId="${borda}" xfId="0"${borda ? ' applyBorder="1"' : ''}/>`)).join('')}`
   + '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
 
 function colunaLetra(n) {
@@ -253,7 +196,8 @@ function nomeAba(nome, usados) {
 }
 
 /**
- * @param {{nome:string, linhas:{valor:any, tipo:'texto'|'numero'|'data', formato?:string, negrito?:boolean}[][]}[]} abas
+ * @param {{nome:string, linhas:{valor:any, tipo:'texto'|'numero'|'data', formato?:string, negrito?:boolean, borda?:boolean}[][], mesclas?:string[]}[]} abas
+ *   mesclas: células mescladas, como "A1:C1"
  */
 function xlsx({ titulo, abas }) {
   const usados = new Set();
@@ -266,15 +210,17 @@ function xlsx({ titulo, abas }) {
     const larguras = [];
     const linhasXml = aba.linhas.map((linha, r) => {
       const celulas = linha.map((c, k) => {
-        if (!c || c.valor === '' || c.valor == null) return '';
         const ref = `${colunaLetra(k)}${r + 1}`;
+        // célula de tabela com borda: os estilos 8-15 são os mesmos com borda fina
+        const b = c && c.borda ? 8 : 0;
+        if (!c || c.valor === '' || c.valor == null) return b ? `<c r="${ref}" s="${b}"/>` : '';
         const tam = String(c.texto != null ? c.texto : c.valor).length;
         larguras[k] = Math.max(larguras[k] || 0, Math.min(tam, 80));
         if (c.tipo === 'numero' || c.tipo === 'data') {
-          const s = c.tipo === 'data' ? ESTILO.data : ESTILO[c.formato] || ESTILO.padrao;
+          const s = (c.tipo === 'data' ? ESTILO.data : ESTILO[c.formato] || ESTILO.padrao) + b;
           return `<c r="${ref}"${s ? ` s="${s}"` : ''}><v>${c.valor}</v></c>`;
         }
-        const s = c.negrito ? ESTILO.negrito : ESTILO.texto;
+        const s = (c.negrito ? ESTILO.negrito : ESTILO.texto) + b;
         return `<c r="${ref}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${x(c.valor)}</t></is></c>`;
       }).join('');
       return `<row r="${r + 1}">${celulas}</row>`;
@@ -284,6 +230,7 @@ function xlsx({ titulo, abas }) {
       : '';
     arquivos[`xl/worksheets/sheet${i + 1}.xml`] = `${XML}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`
       + `<sheetViews><sheetView workbookViewId="0"${i === 0 ? ' tabSelected="1"' : ''}/></sheetViews><sheetFormatPr defaultRowHeight="15"/>${cols}<sheetData>${linhasXml}</sheetData>`
+      + (aba.mesclas && aba.mesclas.length ? `<mergeCells count="${aba.mesclas.length}">${aba.mesclas.map((m) => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>` : '')
       + '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>';
     relsWb.push({ id: `rId${i + 1}`, tipo: R.planilha, alvo: `worksheets/sheet${i + 1}.xml` });
     folhas.push(`<sheet name="${x(nome)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`);
@@ -352,8 +299,27 @@ function pptx({ titulo, paginas }) {
 
   paginas.forEach((p, i) => {
     const n = i + 1;
-    arquivos[`ppt/media/pagina${n}.jpeg`] = p.bytes;
     const escala = Math.min(cx / (p.largura * PT), cy / (p.altura * PT));
+    if (p.formas != null) {
+      // slide editável: figuras e caixas de texto já montadas (powerpoint.js)
+      const ox = Math.round((cx - p.largura * PT * escala) / 2);
+      const oy = Math.round((cy - p.altura * PT * escala) / 2);
+      const relsSlide = [{ id: 'rId1', tipo: R.layout, alvo: '../slideLayouts/slideLayout1.xml' }];
+      (p.midias || []).forEach((m, k) => {
+        const nome = `slide${n}-${k + 1}.${m.ext === 'jpeg' ? 'jpeg' : 'png'}`;
+        arquivos[`ppt/media/${nome}`] = m.bytes;
+        relsSlide.push({ id: m.rid, tipo: R.imagem, alvo: `../media/${nome}` });
+      });
+      const grupo = ox || oy || escala !== 1
+        ? `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="1000" name="Página"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="${ox}" y="${oy}"/><a:ext cx="${Math.round(p.largura * PT * escala)}" cy="${Math.round(p.altura * PT * escala)}"/><a:chOff x="0" y="0"/><a:chExt cx="${Math.round(p.largura * PT)}" cy="${Math.round(p.altura * PT)}"/></a:xfrm></p:grpSpPr>${p.formas}</p:grpSp>`
+        : p.formas;
+      arquivos[`ppt/slides/slide${n}.xml`] = `${XML}<p:sld ${NS_P}><p:cSld><p:spTree>${GRUPO}${grupo}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
+      arquivos[`ppt/slides/_rels/slide${n}.xml.rels`] = rels(relsSlide);
+      relsPres.push({ id: `rId${n + 1}`, tipo: R.slide, alvo: `slides/slide${n}.xml` });
+      ids.push(`<p:sldId id="${255 + n}" r:id="rId${n + 1}"/>`);
+      return;
+    }
+    arquivos[`ppt/media/pagina${n}.jpeg`] = p.bytes;
     const w = Math.round(p.largura * PT * escala);
     const h = Math.round(p.altura * PT * escala);
     const ox = Math.round((cx - w) / 2);
@@ -415,4 +381,8 @@ function pptx({ titulo, paginas }) {
   });
 }
 
-module.exports = { docx, xlsx, pptx, escapar: x };
+module.exports = {
+  docx, xlsx, pptx, escapar: x, colunaLetra,
+  // peças comuns, usadas também pelo Word editável (word.js)
+  partes: { XML, core, APP, rels, R, tipos, empacotar, PT, TWIP },
+};

@@ -241,23 +241,23 @@ export const FERRAMENTAS = [
   },
   {
     id: 'pdf-word', titulo: 'PDF para Word', icone: 'word', cor: '#2b579a', categoria: 'de-pdf',
-    descricao: 'Gera um DOCX editável, com parágrafos, títulos e tabelas reconstruídos.',
+    descricao: 'Gera um DOCX editável com o mesmo visual: texto, fotos, tabelas, cabeçalho e rodapé no lugar.',
     aceita: PDF, extensoes: EXT_PDF, area: 'arquivos', acao: 'Converter para Word',
     palavras: 'docx doc editar editavel converter documento',
     opcoes: [
       {
         chave: 'modo', tipo: 'escolhas', rotulo: 'Como converter', padrao: 'texto',
         opcoes: [
-          { valor: 'texto', rotulo: 'Texto editável', dica: 'Parágrafos, negrito, títulos e tabelas.' },
-          { valor: 'imagem', rotulo: 'Visual idêntico', dica: 'Cada página como imagem. Não dá para editar o texto.' },
+          { valor: 'texto', rotulo: 'Texto editável', dica: 'Fontes, cores, fotos, tabelas e listas no lugar. Dá para editar tudo.' },
+          { valor: 'imagem', rotulo: 'Página como imagem', dica: 'Cada página vira uma foto. Não dá para editar o texto.' },
         ],
       },
-      { chave: 'aviso', tipo: 'aviso', nivel: 'info', texto: 'PDF digitalizado (foto do papel) não tem texto: passe antes no OCR.', quando: (o) => o.modo === 'texto' },
+      { chave: 'ocr', tipo: 'alternar', rotulo: 'Ler o texto de páginas digitalizadas (OCR)', padrao: true, quando: (o) => o.modo === 'texto', ajuda: 'Páginas que são foto do papel viram texto editável.' },
     ],
   },
   {
     id: 'pdf-excel', titulo: 'PDF para Excel', icone: 'excel', cor: '#217346', categoria: 'de-pdf',
-    descricao: 'Tabelas do PDF viram planilha, com colunas, números e datas de verdade.',
+    descricao: 'Tabelas do PDF viram planilha, com colunas, células mescladas, números e datas de verdade.',
     aceita: PDF, extensoes: EXT_PDF, area: 'arquivos', acao: 'Converter para Excel',
     palavras: 'xlsx planilha tabela extrato converter',
     opcoes: [
@@ -266,14 +266,24 @@ export const FERRAMENTAS = [
         opcoes: [{ valor: 'pagina', rotulo: 'Uma aba por página' }, { valor: 'unica', rotulo: 'Tudo numa aba' }],
       },
       { chave: 'numeros', tipo: 'alternar', rotulo: 'Reconhecer números e datas', ajuda: 'Valores como 1.234,56 viram números que somam no Excel.', padrao: true },
+      { chave: 'ocr', tipo: 'alternar', rotulo: 'Ler o texto de páginas digitalizadas (OCR)', padrao: true },
     ],
   },
   {
     id: 'pdf-powerpoint', titulo: 'PDF para PowerPoint', icone: 'powerpoint', cor: '#c43e1c', categoria: 'de-pdf',
-    descricao: 'Cada página vira um slide, em alta qualidade.',
+    descricao: 'Cada página vira um slide igual, com o texto editável e as imagens soltas.',
     aceita: PDF, extensoes: EXT_PDF, area: 'arquivos', acao: 'Converter para PowerPoint',
     palavras: 'pptx slides apresentacao converter',
-    opcoes: [],
+    opcoes: [
+      {
+        chave: 'modo', tipo: 'escolhas', rotulo: 'Como converter', padrao: 'editavel',
+        opcoes: [
+          { valor: 'editavel', rotulo: 'Editável', dica: 'Texto em caixas de texto e imagens que dá para mover.' },
+          { valor: 'imagem', rotulo: 'Slide como imagem', dica: 'Cada página vira uma foto do slide.' },
+        ],
+      },
+      { chave: 'ocr', tipo: 'alternar', rotulo: 'Ler o texto de páginas digitalizadas (OCR)', padrao: true, quando: (o) => o.modo !== 'imagem' },
+    ],
   },
   {
     id: 'pdf-texto', titulo: 'PDF para texto', icone: 'textoArquivo', cor: '#60646c', categoria: 'de-pdf',

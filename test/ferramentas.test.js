@@ -362,6 +362,40 @@ describe('converter', () => {
     assert.ok(unzipSync(fs.readFileSync(t2.arquivos[0]))['word/media/pagina1.jpeg']);
   });
 
+  test('PDF para Word leva imagens, tabela com bordas, cores, sublinhado, cabeçalho e rodapé', async () => {
+    const [a] = await A.registrar([await A.pdfCompleto('word-completo.pdf')]);
+    const t = await A.rodar('pdf-word', [a], { modo: 'texto' });
+    ok(t);
+    const zip = unzipSync(fs.readFileSync(t.arquivos[0]));
+    const doc = strFromU8(zip['word/document.xml']);
+    const midias = Object.keys(zip).filter((k) => k.startsWith('word/media/'));
+    assert.ok(midias.some((k) => k.endsWith('.png')), 'o logo (com transparência) vai como imagem');
+    assert.ok(midias.some((k) => k.endsWith('.jpeg')), 'a foto vai como JPEG');
+    assert.match(doc, /<w:tbl>[\s\S]*<w:top w:val="single"[\s\S]*w:fill="D9D9D9"/, 'tabela com bordas e o fundo do cabeçalho');
+    assert.match(doc, />Parcela</);
+    assert.match(doc, /<w:color w:val="1F4[CD]78"\/>/, 'título na cor do PDF');
+    assert.match(doc, /<w:u w:val="single"\/>[\s\S]{0,200}Atenção:/, 'palavra sublinhada');
+    assert.match(doc, /w:ascii="Times New Roman"/, 'fonte do PDF');
+    assert.doesNotMatch(doc, /Escritório Modelo/, 'o cabeçalho repetido sai do corpo');
+    assert.match(strFromU8(zip['word/header1.xml']), /Escritório Modelo de Advocacia/);
+    const rodape = strFromU8(zip['word/footer1.xml']);
+    assert.match(rodape, /w:instr=" PAGE "/, 'número da página vira campo');
+    assert.match(rodape, /w:instr=" NUMPAGES "/, 'total de páginas vira campo');
+    assert.match(doc, /<w:pageBreakBefore\/>/, 'cada página do PDF começa uma página no Word');
+  });
+
+  test('PDF digitalizado vira Word editável (OCR automático)', { timeout: 240000 }, async () => {
+    const [a] = await A.registrar([await A.pdfDigitalizado('word-scan.pdf')]);
+    const t = await A.rodar('pdf-word', [a], { modo: 'texto' });
+    ok(t);
+    const doc = strFromU8(unzipSync(fs.readFileSync(t.arquivos[0]))['word/document.xml']);
+    assert.match(doc, /PRESTA/, 'o texto da foto do papel virou texto');
+    assert.ok(t.avisos.some((x) => /OCR/.test(x)), 'avisa que usou OCR');
+    const sem = await A.rodar('pdf-word', [a], { modo: 'texto', ocr: false });
+    ok(sem);
+    assert.ok(sem.avisos.some((x) => /como imagem/.test(x)), 'sem OCR, avisa que ficou como imagem');
+  });
+
   test('PDF para Excel reconhece colunas, valores e datas', async () => {
     const [a] = await A.registrar([await A.pdfComTabela('excel.pdf')]);
     const t = await A.rodar('pdf-excel', [a], { numeros: true });
@@ -373,13 +407,44 @@ describe('converter', () => {
     assert.match(folha, /<v>45689<\/v>/, '01/02/2025 vira data do Excel');
   });
 
-  test('PDF para PowerPoint: um slide por página', async () => {
-    const [a] = await A.registrar([await A.pdfDeTexto('ppt.pdf', { paginas: 2 })]);
+  test('PDF para Excel usa as bordas da tabela para separar as colunas', async () => {
+    const [a] = await A.registrar([await A.pdfCompleto('excel-bordas.pdf')]);
+    const t = await A.rodar('pdf-excel', [a], { numeros: true, abas: 'pagina' });
+    ok(t);
+    const folha = strFromU8(unzipSync(fs.readFileSync(t.arquivos[0]))['xl/worksheets/sheet1.xml']);
+    const celula = (texto) => (new RegExp(`<c r="([A-Z]+)\\d+"[^>]*>(?:<is><t[^>]*>${texto}</t>|<v>${texto}</v>)`).exec(folha) || [])[1];
+    assert.equal(celula('Parcela'), 'A');
+    assert.equal(celula('Vencimento'), 'B');
+    assert.equal(celula('Valor'), 'C');
+    assert.equal(celula('1500'), 'C', 'R$ 1.500,00 vira número na coluna do valor');
+    assert.match(folha, /<c r="A\d+" s="1[0-5]"/, 'células da tabela com borda');
+  });
+
+  test('PDF para PowerPoint: editável (caixas de texto e imagens) ou como imagem', async () => {
+    const [a] = await A.registrar([await A.pdfCompleto('ppt-completo.pdf')]);
     const t = await A.rodar('pdf-powerpoint', [a], {});
     ok(t);
     const zip = unzipSync(fs.readFileSync(t.arquivos[0]));
     assert.ok(zip['ppt/slides/slide2.xml']);
     assert.ok(!zip['ppt/slides/slide3.xml']);
+    const slide = strFromU8(zip['ppt/slides/slide1.xml']);
+    assert.match(slide, /<p:cNvSpPr txBox="1"\/>/, 'texto em caixa de texto');
+    assert.match(slide, /CONTRATO DE HONORÁRIOS/);
+    assert.match(slide, /<a:latin typeface="Times New Roman"\/>/);
+    assert.match(slide, /<p:pic>/, 'logo e foto como imagens soltas');
+    const t2 = await A.rodar('pdf-powerpoint', [a], { modo: 'imagem' });
+    ok(t2);
+    assert.ok(unzipSync(fs.readFileSync(t2.arquivos[0]))['ppt/media/pagina1.jpeg']);
+  });
+
+  test('extrair imagens mantém a transparência e não solta as máscaras', async () => {
+    const [a] = await A.registrar([await A.pdfCompleto('extrair.pdf')]);
+    const t = await A.rodar('pdf-jpg', [a], { modo: 'imagens' });
+    ok(t);
+    assert.equal(t.arquivos.length, 2, 'logo e foto (a máscara do logo não vira imagem separada)');
+    const png = t.arquivos.find((f) => f.endsWith('.png'));
+    const meta = await require('sharp')(png).metadata();
+    assert.ok(meta.hasAlpha, 'o logo sai com fundo transparente');
   });
 
   test('PDF para PDF/A marca a conformidade', async () => {

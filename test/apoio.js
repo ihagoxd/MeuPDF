@@ -156,6 +156,50 @@ async function pngTransparente(nome) {
   return caminho;
 }
 
+/**
+ * Documento "de verdade": logo com transparência, foto, título colorido,
+ * palavra sublinhada, tabela com bordas e fundo no cabeçalho, e o mesmo
+ * cabeçalho/rodapé (com "Página N de 2") nas duas páginas.
+ */
+async function pdfCompleto(nome) {
+  const doc = await PDFDocument.create();
+  const f = await doc.embedFont(StandardFonts.TimesRoman);
+  const b = await doc.embedFont(StandardFonts.TimesRomanBold);
+  const logo = await doc.embedPng(fs.readFileSync(await pngTransparente(`logo-${nome}.png`)));
+  // foto de verdade tem textura (milhares de cores)
+  const foto = await doc.embedJpg(await sharp({ create: { width: 900, height: 600, channels: 3, noise: { type: 'gaussian', mean: 120, sigma: 35 } } })
+    .composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600"><circle cx="700" cy="150" r="90" fill="#ffd200" fill-opacity="0.8"/><polygon points="0,600 380,220 760,600" fill="#2e8b57" fill-opacity="0.7"/></svg>') }])
+    .jpeg({ quality: 88 }).toBuffer());
+  for (let n = 1; n <= 2; n += 1) {
+    const p = doc.addPage([595.28, 841.89]);
+    p.drawText('Escritório Modelo de Advocacia', { x: 60, y: 805, size: 9, font: f, color: rgb(0.4, 0.4, 0.4) });
+    p.drawText(`Página ${n} de 2`, { x: 260, y: 30, size: 9, font: f });
+    if (n === 1) {
+      p.drawImage(logo, { x: 60, y: 720, width: 120, height: 60 });
+      p.drawText('CONTRATO DE HONORÁRIOS', { x: 60, y: 680, size: 18, font: b, color: rgb(0.12, 0.3, 0.47) });
+      p.drawText('O contratante pagará os honorários conforme a tabela abaixo, em', { x: 60, y: 650, size: 12, font: f });
+      p.drawText('parcelas mensais e sucessivas, sem juros.', { x: 60, y: 636, size: 12, font: f });
+      p.drawText('Atenção:', { x: 60, y: 610, size: 12, font: b });
+      p.drawLine({ start: { x: 60, y: 608 }, end: { x: 60 + b.widthOfTextAtSize('Atenção:', 12), y: 608 }, thickness: 0.8 });
+      p.drawText('o atraso gera multa de 2%.', { x: 112, y: 610, size: 12, font: f });
+      // tabela com bordas: 3 colunas x 3 linhas, cabeçalho com fundo cinza
+      const xs = [60, 200, 340, 480];
+      const ys = [580, 558, 536, 514];
+      p.drawRectangle({ x: 60, y: 558, width: 420, height: 22, color: rgb(0.85, 0.85, 0.85) });
+      for (const y of ys) p.drawLine({ start: { x: 60, y }, end: { x: 480, y }, thickness: 0.75 });
+      for (const x of xs) p.drawLine({ start: { x, y: 580 }, end: { x, y: 514 }, thickness: 0.75 });
+      [['Parcela', 'Vencimento', 'Valor'], ['1ª', '10/01/2027', 'R$ 1.500,00'], ['2ª', '10/02/2027', 'R$ 1.500,00']]
+        .forEach((l, i) => l.forEach((t, j) => p.drawText(t, { x: xs[j] + 5, y: ys[i] - 15, size: 11, font: i === 0 ? b : f })));
+      p.drawImage(foto, { x: 60, y: 300, width: 240, height: 160 });
+    } else {
+      p.drawText('Cláusula final: as partes elegem o foro da comarca de Araguaína.', { x: 60, y: 760, size: 12, font: f });
+    }
+  }
+  const caminho = path.join(PASTA, nome);
+  fs.writeFileSync(caminho, await doc.save());
+  return caminho;
+}
+
 /* ---------------- rodar ferramentas ---------------- */
 
 async function registrar(caminhos) {
@@ -220,7 +264,7 @@ function limpar() {
 
 module.exports = {
   DADOS, PASTA, esperar,
-  pdfDeTexto, pdfComTabela, pdfRestrito, pdfComSenha, pdfDigitalizado, pdfPesado, pdfComFormulario,
+  pdfDeTexto, pdfComTabela, pdfRestrito, pdfComSenha, pdfDigitalizado, pdfPesado, pdfComFormulario, pdfCompleto,
   fotoDeCelular, pngTransparente, imagemComTexto,
   registrar, rodar, lerPdf, limpar,
   armazem,
